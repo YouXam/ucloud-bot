@@ -6,12 +6,19 @@ compatibility_date = "2023-10-31"
 [[d1_databases]]
 binding = "DB"
 database_name = "ucloud-bot"
-database_id = "xxx"
+database_id = "xxxxxx"
 
 [vars]
 ENV_BOT_TOKEN = "xxx"
-ENV_BOT_SECRET = 'xxx'
-API_ENDPOINT = "xxx"
+ENV_BOT_SECRET = 'xxx"
+
+[env.staging.vars]
+API_SCHEDULE = "https://localhost:8788"
+API_FETCH = "https://localhost:8788"
+
+[env.production.vars]
+API_SCHEDULE = "xxxxx"
+API_FETCH = "xxxxx"
 
 [triggers]
 # every 30 minutes

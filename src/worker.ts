@@ -9,7 +9,7 @@ export default {
 
 	async scheduled(event: Event, env: Env, ctx: ExecutionContext): Promise<void> {
 		const users: D1Result<User> = await env.DB.prepare(`SELECT * FROM users WHERE push`).all();
-		if (!users.success || users.results.length == 0)
+		if (!users.success || !users.results || users.results.length == 0)
 			return;
 		const cache: { [key: string] : Detail } = {}
 		for (const user of users.results) {

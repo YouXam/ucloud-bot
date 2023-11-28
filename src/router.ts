@@ -1,5 +1,5 @@
 import { Router } from 'itty-router';
-import { UndoneList, UndoneListItem, ResourceDetail, Detail } from './types';
+import { UndoneList, UndoneListItem, ResourceDetail, Detail, User } from './types';
 import { Parser } from 'htmlparser2';
 
 function apiUrl(env: Env, methodName: string, params?: { [key: string]: string }) {
@@ -10,11 +10,17 @@ function apiUrl(env: Env, methodName: string, params?: { [key: string]: string }
 	return `https://api.telegram.org/bot${env.ENV_BOT_TOKEN}/${methodName}${query}`
 }
 async function api(env: Env, methodName: string, params?: { [key: string]: string }) {
-	return await (await fetch(apiUrl(env, methodName, params))).json()
+	const url = apiUrl(env, methodName, params)
+	const res = await fetch(url)
+	return await res.json()
 }
 
 async function sendMessage(env: Env, chat_id: number, text: string, parse_mode = 'HTML') {
-	return await api(env, 'sendMessage', { chat_id: chat_id.toString(), text, parse_mode })
+	try {
+		return await api(env, 'sendMessage', { chat_id: chat_id.toString(), text, parse_mode })
+	} catch (err) {
+		console.error(err)
+	}
 }
 
 async function editMessage(env: Env, chat_id: number, message_id: number, text: string, parse_mode = 'HTML') {
@@ -50,12 +56,13 @@ async function onCommand(message: string, id: number, env: Env) {
 				.run()
 			await editMessage(env, id, res.result.message_id, "登录成功, 推送已开启。使用 /list 查看未完成的作业。")
 		} catch (e: any) {
-			await editMessage(env, id, res.result.message_id, "登录失败: \n" + e.toString())
+			console.log(e)
+			if (res) await editMessage(env, id, res.result.message_id, "登录失败: \n" + e.toString())
 		}
 	} else if (message.startsWith('/list')) {
 		const res: { result: { message_id: number } } = await sendMessage(env, id, "请稍等...") as any
 		try {
-			const user = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first()
+			const user: User = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first()
 			if (!user) {
 				return await editMessage(env, id, res.result.message_id, "未登录。使用 /login username password 登录。")
 			}
@@ -109,7 +116,7 @@ async function onCommand(message: string, id: number, env: Env) {
 			return await editMessage(env, id, res.result.message_id, "获取失败: \n" + e.toString())
 		}
 	} else if (message.startsWith('/push')) {
-		const user = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first()
+		const user: User = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first()
 		if (!user) {
 			return await sendMessage(env, id, "未登录。使用 `/login username password` 登录。", 'MarkdownV2')
 		}
@@ -226,7 +233,7 @@ router.post('/webhook', async (request, env: Env) => {
 			return new Response('Ok')
 		}
 		const id = from.id
-		const user = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first()
+		const user: User = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first()
 		if (!user) {
 			return await sendMessage(env, id, "未登录。使用 `/login username password` 登录。", 'MarkdownV2')
 		}

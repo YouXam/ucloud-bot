@@ -10,7 +10,7 @@
     "@cloudflare/workers-types": "^4.20230419.0",
     "itty-router": "^3.0.12",
     "typescript": "^5.0.4",
-    "wrangler": "^3.0.0"
+    "wrangler": "^3.17.1"
   },
   "dependencies": {
     "htmlparser2": "^9.0.0"
