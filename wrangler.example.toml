@@ -10,15 +10,9 @@ database_id = "xxxxxx"
 
 [vars]
 ENV_BOT_TOKEN = "xxx"
-ENV_BOT_SECRET = 'xxx"
-
-[env.staging.vars]
-API_SCHEDULE = "https://localhost:8788"
-API_FETCH = "https://localhost:8788"
-
-[env.production.vars]
-API_SCHEDULE = "xxxxx"
-API_FETCH = "xxxxx"
+ENV_BOT_SECRET = 'xxx'
+API_SCHEDULE = "xxx"
+API_FETCH = "xxx"
 
 [triggers]
 # every 30 minutes

@@ -195,10 +195,27 @@ export async function sendTask(env: Env, id: number, detail: Detail) {
 		url: string;
 	}[][] = []
 	if (detail.resource) {
+		function getPreviewURL(x: ResourceDetail) {
+			if (x.ext == 'doc' || x.ext == 'docx' || x.ext == 'ppt' || x.ext == 'pptx' || x.ext == 'xls' || x.ext == 'xlsx') {
+				if (x.ext == 'doc' || x.ext == 'docx') {
+					const urla = "http://psg3-view-wopi.wopi.online.office.net:808/oh/wopi/files/@/wFileId?wFileId="
+					const urlb = urla + encodeURIComponent(x.url)
+					const urlc = "https://psg3-word-view.officeapps.live.com/wv/WordViewer/request.pdf?WOPIsrc=" + encodeURIComponent(urlb) + "&access_token=1&access_token_ttl=0&type=printpdf"
+					return urlc
+				}
+				return "https://view.officeapps.live.com/op/view.aspx?src=" + encodeURIComponent(x.url)
+			}
+			return x.url
+		}
 		reply_markup = reply_markup.concat(detail.resource.map((x: ResourceDetail) => ([{
-			text: x.name,
-			url: `https://fileucloud.bupt.edu.cn/ucloud/document/${x.storageId}.${x.ext}`
-		}])))
+				text: x.name,
+				url: getPreviewURL(x)
+			},
+			{
+				text: '下载',
+				url: x.url
+			}
+		])))
 	}
 	return await api(env, 'sendMessage', {
 		chat_id: id.toString(),
@@ -206,6 +223,7 @@ export async function sendTask(env: Env, id: number, detail: Detail) {
 		parse_mode: 'HTML',
 		reply_markup: JSON.stringify({
 			inline_keyboard: reply_markup
+			
 		})
 	})
 }
@@ -228,6 +246,7 @@ router.post('/webhook', async (request, env: Env) => {
 	} else if (data.callback_query) {
 		const { callback_query } = data
 		const { data: activityId, from } = callback_query
+		
 		if (activityId == '0') {
 			await api(env, 'answerCallbackQuery', { callback_query_id: callback_query.id })
 			return new Response('Ok')

@@ -28,7 +28,9 @@ export interface UndoneListItem {
 export interface ResourceDetail {
     storageId: string;
     name: string;
-    ext: string
+    ext: string;
+    url: string;
+    id: string;
 }
 
 
