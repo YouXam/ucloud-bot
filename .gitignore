@@ -2,3 +2,4 @@
 .wrangler
 node_modules
 wrangler.toml
+.dev.vars

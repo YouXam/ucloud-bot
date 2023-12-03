@@ -187,7 +187,18 @@ function filterAndExtractImages(html: string) {
 		images
 	};
 }
-
+function base64(n: number) {
+	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_';
+	n++;
+	let result = '', index = 0
+	while (n) {
+		const base = index > 0 ? 63 : 52;
+		result += chars[n % base];
+		n = Math.floor(n / base);
+		index++;
+	}
+	return result;
+}
 export async function sendTask(env: Env, id: number, detail: Detail) {
 	let { assignmentTitle, assignmentContent, chapterName, courseInfo, assignmentBeginTime, assignmentEndTime } = detail
 	const { html: content, images } = filterAndExtractImages(assignmentContent)
@@ -201,6 +212,7 @@ export async function sendTask(env: Env, id: number, detail: Detail) {
 		})
 	}
 	let couseName = courseInfo && courseInfo.name && courseInfo.teachers ? "#" + courseInfo.name + "(" + courseInfo?.teachers + ")" : ''
+
 	const text = `<b>${assignmentTitle}</b>\n<b>课程: </b>${couseName}\n<b>章节</b>: ${chapterName || '-'}\n<b>开始时间</b>: ${assignmentBeginTime}\n<b>结束时间</b>: ${assignmentEndTime}\n\n${content}`
 	let reply_markup: {
 		text: string;
