@@ -93,3 +93,23 @@ export interface User {
     push: boolean;
     undoneList: string;
 }
+
+export interface Attachment {
+    resourceId: string;
+    url: string;
+    filename: string;
+    mime_type: string;
+}
+
+export interface Submitting {
+    id?: number;
+    username: string;
+    assignment_id: string;
+    isSubmitting: boolean;
+    content: string;
+    attachments: Attachment[];
+    messageId: string | null;
+    channelId: string;
+    reply_to: string;
+    detail: Detail;
+}
