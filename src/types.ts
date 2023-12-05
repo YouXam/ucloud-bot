@@ -105,11 +105,26 @@ export interface Submitting {
     id?: number;
     username: string;
     assignment_id: string;
-    isSubmitting: boolean;
+    is_submitting: boolean;
     content: string;
     attachments: Attachment[];
-    messageId: string | null;
-    channelId: string;
+    message_id: string | null;
+    channel_id: string;
     reply_to: string;
     detail: Detail;
+    reply_markup: object;
+}
+
+export interface SubmittingD1 {
+    id?: number;
+    username: string;
+    assignment_id: string;
+    is_submitting: boolean;
+    content: string;
+    attachments: string;
+    message_id: string | null;
+    channel_id: string;
+    reply_to: string;
+    detail: string;
+    reply_markup: string;
 }

@@ -17,7 +17,8 @@ CREATE TABLE submitting (
     content TEXT,
     attachments TEXT,
     message_id VARCHAR(255),
-    channelId VARCHAR(255),
+    channel_id VARCHAR(255),
+    reply_markup TEXT,
     reply_to VARCHAR(255),
     detail TEXT
 );
