@@ -99,7 +99,16 @@ export interface Attachment {
     url: string;
     filename: string;
     mime_type: string;
+    uploading?: boolean;
 }
+
+
+interface InlineKeyboardButton {
+    text: string;
+    callback_data?: string;
+    url?: string;
+}
+
 
 export interface Submitting {
     id?: number;
@@ -112,7 +121,9 @@ export interface Submitting {
     channel_id: string;
     reply_to: string;
     detail: Detail;
-    reply_markup: object;
+    reply_markup: {
+        inline_keyboard?: InlineKeyboardButton[][];
+    };
 }
 
 export interface SubmittingD1 {
@@ -128,3 +139,4 @@ export interface SubmittingD1 {
     detail: string;
     reply_markup: string;
 }
+

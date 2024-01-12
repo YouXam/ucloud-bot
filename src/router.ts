@@ -40,7 +40,43 @@ async function sendMessage(env: Env, chat_id: number, text: string, parse_mode =
 async function editMessage(env: Env, chat_id: number, message_id: number, text: string, parse_mode = 'HTML') {
 	return await api(env, 'editMessageText', { chat_id: chat_id.toString(), message_id: message_id.toString(), text, parse_mode })
 }
-
+async function exit_submit(id: number, env: Env, mode: 'command' | 'callback' = 'command') {
+	const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first()
+	if (!user) {
+		return await sendMessage(env, id, "未登录。使用 `/login username password` 登录。", 'MarkdownV2')
+	}
+	const submitting: SubmittingD1 | null = await env.DB.prepare(`SELECT * FROM submitting WHERE username = ?`).bind(user.username).first()
+	if (!submitting || !submitting.is_submitting) {
+		if (mode === 'command') {
+			await sendMessage(env, id, "当前没有正在提交的作业。", 'MarkdownV2')
+		} else {
+			await api(env, 'answerCallbackQuery', {
+				callback_query_id: id.toString(),
+				text: '当前没有正在提交的作业。'
+			})
+		}
+		return
+	}
+	// 恢复 reply_to 的 inline_keybord, 编辑 submitting message 为已取消
+	const reply_markup = JSON.parse(submitting.reply_markup)
+	reply_markup.inline_keyboard[reply_markup.inline_keyboard.length - 1] = [
+		{
+			text: '提交',
+			callback_data: 's' + submitting.assignment_id
+		}
+	]
+	await api(env, 'editMessageReplyMarkup', {
+		chat_id: submitting.channel_id,
+		message_id: submitting.reply_to,
+		reply_markup: JSON.stringify(reply_markup)
+	})
+	await api(env, 'editMessageText', {
+		chat_id: submitting.channel_id,
+		message_id: submitting.message_id,
+		text: "已取消提交。"
+	})
+	await env.DB.prepare(`DELETE FROM submitting WHERE username = ?`).bind(user.username).run()
+}
 async function onCommand(message: string, id: number, env: Env) {
 	if (message.startsWith('/start')) {
 		return await sendMessage(env, id, "使用 `/login username password` 登录", 'MarkdownV2')
@@ -140,34 +176,7 @@ async function onCommand(message: string, id: number, env: Env) {
 			.run()
 		return await sendMessage(env, id, state ? "推送已开启。" : "推送已关闭。", 'MarkdownV2')
 	} else if (message.startsWith('/exit_submit')) {
-		const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first()
-		if (!user) {
-			return await sendMessage(env, id, "未登录。使用 `/login username password` 登录。", 'MarkdownV2')
-		}
-		const submitting: SubmittingD1 | null = await env.DB.prepare(`SELECT * FROM submitting WHERE username = ?`).bind(user.username).first()
-		if (!submitting || !submitting.is_submitting) {
-			return await sendMessage(env, id, "当前没有正在提交的作业。", 'MarkdownV2')
-		}
-		// 恢复 reply_to 的 inline_keybord, 编辑 submitting message 为已取消
-		const reply_markup = JSON.parse(submitting.reply_markup)
-		reply_markup.inline_keyboard[reply_markup.inline_keyboard.length - 1] = [
-			{
-				text: '提交',
-				callback_data: 's' + submitting.assignment_id
-			}
-		]
-		await api(env, 'editMessageReplyMarkup', {
-			chat_id: submitting.channel_id,
-			message_id: submitting.reply_to,
-			reply_markup: JSON.stringify(reply_markup)
-		})
-		await api(env, 'editMessageText', {
-			chat_id: submitting.channel_id,
-			message_id: submitting.message_id,
-			text: "已取消提交。"
-		})
-		await env.DB.prepare(`DELETE FROM submitting WHERE username = ?`).bind(user.username).run()
-		return
+		await exit_submit(id, env, 'command')
 	}
 }
 
@@ -279,12 +288,20 @@ export async function sendTask(env: Env, id: number, detail: Detail) {
 
 async function updateSubmitting(env: Env, submitting: Submitting): Promise<string> {
 	const { id, username, assignment_id, content, attachments, message_id, detail, reply_to, channel_id } = submitting
-	let text = `正在提交 ${detail.assignmentTitle}，请直接发送文件或文字，发送完毕后点击“提交”按钮以提交。\n\n`
+	let text = submitting.is_submitting ? 
+		`正在提交 <b>${detail.assignmentTitle}</b>，请直接发送文件或文字，发送完毕后点击“提交”按钮以提交。注意发送图片时不要勾选「压缩图片」。\n\n`
+		: `已提交 <b>${detail.assignmentTitle}</b>：\n\n`
 	if (content) {
-		text += `内容：\n${content}\n\n`
+		text += `<b>内容</b>：\n${content}\n\n`
 	}
 	if (attachments.length) {
-		text += `附件：\n${attachments.map(x => '[' + x.filename + '](' + x.url + ')').join('\n')}\n\n`
+		text += `<b>附件</b>：\n${attachments.map(x => {
+			if (x.uploading) {
+				return x.filename
+			} else {
+				return '<a href="' + x.url + '">' + x.filename + '</a>'
+			}
+		}).join('\n')}\n\n`
 	}
 	const res: any = await api(env, message_id ? 'editMessageText' : 'sendMessage', {
 		chat_id: channel_id,
@@ -292,16 +309,23 @@ async function updateSubmitting(env: Env, submitting: Submitting): Promise<strin
 		message_id: message_id,
 		parse_mode: 'HTML',
 		reply_to_message_id: reply_to,
-		reply_markup: JSON.stringify({
+		reply_markup: submitting.is_submitting ? JSON.stringify({
 			inline_keyboard: [
 				[
+					{
+						text: '取消',
+						callback_data: 'ec'
+					},
 					{
 						text: '提交',
 						callback_data: 'es'
 					}
 				]
 			]
-		})
+		}) : { inline_keyboard: [] },
+		link_preview_options: {
+			prefer_small_media: true
+		}
 	})
 	if (!res || !res.ok) {
 		console.error('Error', res)
@@ -317,18 +341,97 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 		return new Response('Not Found.', { status: 404 });
 	}
 	const data = await request.json()
+	console.log(data)
 	if (data.message) {
 		const { message } = data
+		if (!message.text && !message.caption && !message.document) {
+			return new Response('Ok')
+		}
+		const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(message.chat.id).first()
+		if (!user) {
+			return new Response('ok')
+		}
+		if (message.text && message.text.startsWith('/')) {
+			return new Response(JSON.stringify(await onCommand(message.text, message.chat.id, env)))
+		}
+
+		// 处理提交
+		const preSubmittingD1: SubmittingD1 | null = await env.DB.prepare(`SELECT * FROM submitting WHERE username = ?`)
+				.bind(user.username).first()
+		const preSubmitting: Submitting | null = preSubmittingD1 ? {
+			...preSubmittingD1,
+			attachments: JSON.parse(preSubmittingD1.attachments),
+			detail: JSON.parse(preSubmittingD1.detail),
+			reply_markup: JSON.parse(preSubmittingD1.reply_markup)
+		} : null
+		if (!preSubmitting || !preSubmitting.is_submitting) {
+			return new Response('ok')
+		}
 		if (message.text) {
-			const { text }: { text: string } = message
-			if (text.startsWith('/')) {
-				return new Response(JSON.stringify(await onCommand(text, message.chat.id, env)))
+			const text = message.text
+			preSubmitting.content = preSubmitting.content.length ? preSubmitting.content + '\n' + text : text
+			await env.DB.prepare('UPDATE submitting SET content = ? WHERE username = ?').bind(
+				preSubmitting.content, user.username
+			).run()
+			await updateSubmitting(env, preSubmitting)
+		} else if (message.document) {
+			const { file_name: filename, mime_type, file_id } = message.document
+			const position = preSubmitting.attachments.length
+			preSubmitting.attachments.push({
+				resourceId: '',
+				url: '',
+				filename,
+				mime_type,
+				uploading: true
+			})
+			await env.DB.prepare('UPDATE submitting SET attachments = ? WHERE username = ?').bind(
+				JSON.stringify(preSubmitting.attachments), user.username
+			).run()
+			await updateSubmitting(env, preSubmitting)
+			const r: any = await api(env, 'getFile', { file_id })
+			if (!r.ok) {
+				await sendMessage(env, message.chat.id, "获取文件失败")
+				return new Response("ok")
 			}
+			const url = "https://api.telegram.org/file/bot" + env.ENV_BOT_TOKEN + "/" + r.result.file_path
+			const r2 = await fetch(env.API_FETCH + "/upload", {
+				method: "POST",
+				headers: {
+					"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
+				},
+				body: JSON.stringify({ url, filename, mime_type })
+			})
+			const attachment: any = await r2.json()
+			const newAttachments = {
+				resourceId: attachment.resourceId,
+				url: attachment.previewUrl,
+				filename,
+				mime_type
+			}
+			const preSubmitting2D1: SubmittingD1 | null = await env.DB.prepare(`SELECT * FROM submitting WHERE username = ?`)
+				.bind(user.username).first()
+			const preSubmitting2: Submitting | null = preSubmitting2D1 ? {
+				...preSubmitting2D1,
+				attachments: JSON.parse(preSubmitting2D1.attachments),
+				detail: JSON.parse(preSubmitting2D1.detail),
+				reply_markup: JSON.parse(preSubmitting2D1.reply_markup)
+			} : null
+			if (!preSubmitting2 || !preSubmitting2.is_submitting) {
+				return new Response('ok')
+			}
+			if (preSubmitting2.attachments.length == position) {
+				preSubmitting2.attachments.push(newAttachments)
+			} else {
+				preSubmitting2.attachments[position] = newAttachments
+			}
+			ctx.waitUntil(env.DB.prepare('UPDATE submitting SET attachments = ? WHERE username = ?').bind(
+				JSON.stringify(preSubmitting2.attachments), user.username
+			).run())
+			await updateSubmitting(env, preSubmitting2)
 		}
 	} else if (data.callback_query) {
 		const { callback_query } = data
 		const { data: activityId, from } = callback_query
-		
 		if (activityId == '0') {
 			// 用户点击教师或课程
 			ctx.waitUntil(api(env, 'answerCallbackQuery', {
@@ -338,14 +441,14 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 			}))
 			return new Response('Ok')
 		} else if (activityId == '-1') {
-			// 用户点击提交中
+			// 提交状态点击“提交中”
 			ctx.waitUntil(api(env, 'answerCallbackQuery', {
 				callback_query_id: callback_query.id,
 				text: '当前作业正在提交。'
 			}))
 			return new Response('Ok') 
 		} else if (activityId.startsWith('s')) {
-			// 用户点击提交
+			// 进入提交状态
 			const submittingId = activityId.substr(1)
 			const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(from.id).first()
 			if (!user) {
@@ -358,10 +461,11 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 			}
 			const preSubmittingD1: SubmittingD1 | null = await env.DB.prepare(`SELECT 
 				* FROM submitting WHERE username = ?`).bind(user.username).first()
-			const preSubmitting: SubmittingD1 | null = preSubmittingD1 ? {
+			const preSubmitting: Submitting | null = preSubmittingD1 ? {
 				...preSubmittingD1,
 				attachments: JSON.parse(preSubmittingD1.attachments),
-				detail: JSON.parse(preSubmittingD1.detail)
+				detail: JSON.parse(preSubmittingD1.detail),
+				reply_markup: JSON.parse(preSubmittingD1.reply_markup)
 			} : null
 			if (preSubmitting && preSubmitting.is_submitting) {
 				ctx.waitUntil(api(env, 'answerCallbackQuery', {
@@ -432,7 +536,86 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 			).run()
 			ctx.waitUntil(api(env, 'answerCallbackQuery', { callback_query_id: callback_query.id }))
 		} else if (activityId == 'es') {
-			
+			// 提交作业
+			const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(from.id).first()
+			if (!user) {
+				ctx.waitUntil(api(env, 'answerCallbackQuery', {
+					callback_query_id: callback_query.id,
+					show_alert: 'true',
+					text: '未登录。使用 `/login username password` 登录。'
+				}))
+				return new Response('Ok')
+			}
+			const preSubmittingD1: SubmittingD1 | null = await env.DB.prepare(`SELECT 
+				* FROM submitting WHERE username = ?`).bind(user.username).first()
+			const preSubmitting: Submitting | null = preSubmittingD1 ? {
+				...preSubmittingD1,
+				attachments: JSON.parse(preSubmittingD1.attachments),
+				detail: JSON.parse(preSubmittingD1.detail),
+				reply_markup: JSON.parse(preSubmittingD1.reply_markup)
+			} : null
+			if (!preSubmitting || !preSubmitting.is_submitting) {
+				ctx.waitUntil(api(env, 'answerCallbackQuery', {
+					callback_query_id: callback_query.id,
+					show_alert: 'true',
+					text: '当前没有提交中的作业'
+				}))
+				return new Response('Ok')
+			}
+			if (!preSubmitting.content && !preSubmitting.attachments.length) {
+				ctx.waitUntil(api(env, 'answerCallbackQuery', {
+					callback_query_id: callback_query.id,
+					show_alert: 'true',
+					text: '请发送内容或附件'
+				}))
+				return new Response('Ok')
+			}
+			if (preSubmitting.attachments.some(x => x.uploading)) {
+				ctx.waitUntil(api(env, 'answerCallbackQuery', {
+					callback_query_id: callback_query.id,
+					show_alert: 'true',
+					text: '请等待附件上传完成'
+				}))
+				return new Response('Ok')
+			}
+			console.log("submit", preSubmitting.assignment_id, preSubmitting.content, preSubmitting.attachments)
+			const s = await fetch(env.API_FETCH + "/submit", {
+				headers: {
+					"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
+				},
+				method: "POST",
+				body: JSON.stringify({
+					assignmentId: preSubmitting.assignment_id,
+					assignmentContent: preSubmitting.content,
+					attachmentIds: preSubmitting.attachments.map(x => x.resourceId)
+				})
+			})
+			console.log(await s.text())
+			const inline_keyboard = preSubmitting.reply_markup.inline_keyboard
+			if (inline_keyboard) {
+				inline_keyboard[inline_keyboard.length - 1] = [
+					{
+						text: '再次提交',
+						callback_data: 's' + preSubmitting.assignment_id
+					}
+				]
+			}
+			ctx.waitUntil(api(env, 'editMessageReplyMarkup', {
+				chat_id: preSubmitting.channel_id,
+				message_id: preSubmitting.reply_to,
+				reply_markup: JSON.stringify({
+					inline_keyboard
+				})
+			}))
+			preSubmitting.is_submitting = false
+			updateSubmitting(env, preSubmitting)
+			await env.DB.prepare(`DELETE FROM submitting WHERE username = ?`).bind(user.username).run()
+			await api(env, 'answerCallbackQuery', {
+				callback_query_id: callback_query.id,
+				text: '提交成功'
+			})
+		} else if (activityId == 'ec') {
+			await exit_submit(from.id, env, 'callback')
 		} else {
 			// 用户点击作业
 			const id = from.id
@@ -466,20 +649,29 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 	return new Response('Ok')
 })
 
-router.get('/getUpdates', async ({ }, env: Env) => {
-	const r = await api(env, 'getUpdates')
-	return new Response(JSON.stringify(r, null, 2))
-});
 
 router.get('/setWebhook', async (request, env: Env) => {
 	const url = new URL(request.url)
 	const proto = request.headers.get('X-Forwarded-Proto') ? request.headers.get('X-Forwarded-Proto') + ":" : url.protocol
 	const host = request.headers.get('host') || url.hostname
 	const webhookUrl = `${proto}//${host}/webhook`
-	const r: any = await (await fetch(apiUrl(env, 'setWebhook', { url: webhookUrl, secret_token: env.ENV_BOT_SECRET }))).json()
+	const jobs = [
+		api(env, 'setMyDescription', { description: '查看/推送「云邮教学空间」作业' }),
+		api(env, 'setMyCommands', { commands: [
+			{ command: 'start', description: '开始' },
+			{ command: 'login', description: '登录' },
+			{ command: 'list', description: '查看未完成的作业' },
+			{ command: 'push', description: '开启/关闭推送' },
+			{ command: 'exit_submit', description: '取消提交' },
+		] }),
+		api(env, 'setMyShortDescription', { short_description: '查看/推送「云邮教学空间」作业' }),
+		(await fetch(apiUrl(env, 'setWebhook', { url: webhookUrl, secret_token: env.ENV_BOT_SECRET }))).json()
+	]
+	const results = await Promise.allSettled(jobs)
 	return new Response(JSON.stringify({
 		webhook: webhookUrl,
-		r
+		succeed: results.filter(x => x.status == 'fulfilled').length == jobs.length,
+		results: results.map(x => x.status == 'fulfilled' ? x.value : x.reason)
 	}), { status: 200, headers: { 'content-type': 'application/json' }})
 
 })
