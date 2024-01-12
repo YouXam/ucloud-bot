@@ -1,13 +1,13 @@
--- DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS submitting;
 
--- CREATE TABLE users (
---     id VARCHAR(255) PRIMARY KEY,
---     username VARCHAR(255),
---     password VARCHAR(255),
---     push BOOLEAN,
---     undoneList TEXT
--- );
+CREATE TABLE users (
+    id VARCHAR(255) PRIMARY KEY,
+    username VARCHAR(255),
+    password VARCHAR(255),
+    push BOOLEAN,
+    undoneList TEXT
+);
 
 CREATE TABLE submitting (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
