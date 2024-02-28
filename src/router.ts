@@ -355,12 +355,12 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 		if (!message.text && !message.caption && !message.document) {
 			return new Response('Ok')
 		}
+		if (message.text && message.text.startsWith('/')) {
+			return new Response(JSON.stringify(await onCommand(message.text, message.chat.id, env)))
+		}
 		const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(message.chat.id).first()
 		if (!user) {
 			return new Response('ok')
-		}
-		if (message.text && message.text.startsWith('/')) {
-			return new Response(JSON.stringify(await onCommand(message.text, message.chat.id, env)))
 		}
 
 		// 处理提交
