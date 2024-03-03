@@ -4,6 +4,7 @@ import { UndoneList, User, Detail  } from './types';
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		console.log("Env: ", env)
 		return apiRouter.handle(request, env, ctx);
 	},
 
@@ -42,11 +43,11 @@ export default {
 							})
 							if (res.status != 200) {
 								console.error(user.username, res.status, res.statusText, await res.text());
-								return;
+							} else {
+								const data: Detail = await res.json();
+								cache[item.activityId] = data;
+								await sendTask(env, user.id, data);
 							}
-							const data: Detail = await res.json();
-							cache[item.activityId] = data;
-							await sendTask(env, user.id, data);
 						} catch (e) {
 							console.error(user.username, e);
 						}

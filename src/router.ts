@@ -116,6 +116,7 @@ async function onCommand(message: string, id: number, env: Env) {
 			if (!user) {
 				return await editMessage(env, id, res.result.message_id, "未登录。使用 /login username password 登录。")
 			}
+			console.log("GET", env.API_FETCH + "/undoneList")
 			const r = await fetch(env.API_FETCH + "/undoneList", {
 				headers: {
 					"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
@@ -123,6 +124,12 @@ async function onCommand(message: string, id: number, env: Env) {
 			})
 			if (r.status == 401) {
 				return await editMessage(env, id, res.result.message_id, "登录失败，可能需要重新登录 : \n" + (await r.text()))
+			}
+			if (r.status != 200) {
+				console.error("status:", r.status)
+				const body = await r.text()
+				console.log("Error: ", body)
+				throw new Error(body)
 			}
 			const data: UndoneList = await r.json()
 			const undoneList = data.undoneList;
@@ -163,6 +170,7 @@ async function onCommand(message: string, id: number, env: Env) {
 				reply_markup: JSON.stringify({ inline_keyboard: reply_markup })
 			})
 		} catch (e: any) {
+			console.error(e.stack || e.message || e.toString())
 			return await editMessage(env, id, res.result.message_id, "获取失败: \n" + e.toString())
 		}
 	} else if (message.startsWith('/push')) {
@@ -289,7 +297,7 @@ export async function sendTask(env: Env, id: number, detail: Detail) {
 async function updateSubmitting(env: Env, submitting: Submitting): Promise<string> {
 	const { id, username, assignment_id, content, attachments, message_id, detail, reply_to, channel_id } = submitting
 	let text = submitting.is_submitting ? 
-		`正在提交 <b>${detail.assignmentTitle}</b>，请直接发送文件或文字，发送完毕后点击“提交”按钮以提交。注意发送图片时不要勾选「压缩图片」。\n\n`
+		`正在提交 <b>${detail.assignmentTitle}</b>，请直接发送文件或文字，发送完毕后点击“提交”按钮以提交。注意发送图片时要以文件格式发送。\n\n`
 		: `已提交 <b>${detail.assignmentTitle}</b>：\n\n`
 	if (content) {
 		text += `<b>内容</b>：\n${content}\n\n`
@@ -297,7 +305,7 @@ async function updateSubmitting(env: Env, submitting: Submitting): Promise<strin
 	if (attachments.length) {
 		text += `<b>附件</b>：\n${attachments.map(x => {
 			if (x.uploading) {
-				return x.filename
+				return x.filename + ' (上传中...)'
 			} else {
 				return '<a href="' + x.url + '">' + x.filename + '</a>'
 			}
