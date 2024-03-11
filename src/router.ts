@@ -22,6 +22,35 @@ async function api(env: Env, methodName: string, params?: { [key: string]: any }
 	console.log(methodName, params, "=>", res2)
 	return res2
 }
+async function safeFetch(input: RequestInfo<unknown, CfProperties<unknown>>, init?: RequestInit<RequestInitCfProperties> | undefined): Promise<Response> {
+	return new Promise(async (resolve, reject) => {
+		try {
+			console.debug("Using api:", input)
+			const res = await fetch(input, init)
+			if (res.status != 200) {
+				throw new Error("status: " + res.status + " " + res.statusText)
+			}
+			console.debug("Api response:", input)
+			resolve(res)
+		} catch (e) {
+			reject(e)
+		}
+	})
+}
+async function fetchAPI(type: 'race' | 'fallback', env: Env, path: string, options?: RequestInit) {
+	if (type === 'race') {
+		const jobs = env.API_FETCH.map(x => safeFetch(x + path, options))
+		return await Promise.any(jobs)
+	}
+	for (const url of env.API_FETCH) {
+		try {
+			return await safeFetch(url + path, options)
+		} catch (e) {
+			console.error(url, e)
+		}
+	}
+	throw  new Error("All fetch failed")
+}
 
 async function sendMessage(env: Env, chat_id: number, text: string, parse_mode = 'HTML', reply_to?: number) {
 	try {
@@ -87,7 +116,7 @@ async function onCommand(message: string, id: number, env: Env) {
 		}
 		const res: { result: { message_id: number } } = await sendMessage(env, id, "登录中...") as any
 		try {
-			const r = await fetch(env.API_FETCH + "/undoneList", {
+			const r = await fetchAPI('race', env, "/undoneList", {
 				headers: {
 					"Authorization": `Basic ${btoa(`${username}:${password}`)}`
 				}
@@ -116,8 +145,7 @@ async function onCommand(message: string, id: number, env: Env) {
 			if (!user) {
 				return await editMessage(env, id, res.result.message_id, "未登录。使用 /login username password 登录。")
 			}
-			console.log("GET", env.API_FETCH + "/undoneList")
-			const r = await fetch(env.API_FETCH + "/undoneList", {
+			const r = await fetchAPI('race', env, "/undoneList", {
 				headers: {
 					"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
 				}
@@ -402,7 +430,7 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				return new Response("ok")
 			}
 			const url = "https://api.telegram.org/file/bot" + env.ENV_BOT_TOKEN + "/" + r.result.file_path
-			const r2 = await fetch(env.API_FETCH + "/upload", {
+			const r2 = await fetchAPI('fallback', env, "/upload", {
 				method: "POST",
 				headers: {
 					"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
@@ -484,7 +512,7 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				return new Response('Ok')
 			}
 
-			const res = await fetch(env.API_FETCH + "/homework?id=" + submittingId, {
+			const res = await fetchAPI('race', env, "/homework?id=" + submittingId, {
 				headers: {
 					"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
 				}
@@ -587,7 +615,7 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				return new Response('Ok')
 			}
 			console.log("submit", preSubmitting.assignment_id, preSubmitting.content, preSubmitting.attachments)
-			const s = await fetch(env.API_FETCH + "/submit", {
+			const s = await fetchAPI('fallback', env, "/submit", {
 				headers: {
 					"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
 				},
@@ -636,7 +664,7 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				}))
 				return new Response('Ok')
 			}
-			const res = await fetch(env.API_FETCH + "/homework?id=" + activityId, {
+			const res = await fetchAPI('race', env, "/homework?id=" + activityId, {
 				headers: {
 					"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
 				}

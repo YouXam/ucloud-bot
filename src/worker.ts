@@ -4,7 +4,6 @@ import { UndoneList, User, Detail  } from './types';
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		console.log("Env: ", env)
 		return apiRouter.handle(request, env, ctx);
 	},
 
