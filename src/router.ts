@@ -78,11 +78,6 @@ async function exit_submit(id: number, env: Env, mode: 'command' | 'callback' = 
 	if (!submitting || !submitting.is_submitting) {
 		if (mode === 'command') {
 			await sendMessage(env, id, "当前没有正在提交的作业。", 'MarkdownV2')
-		} else {
-			await api(env, 'answerCallbackQuery', {
-				callback_query_id: id.toString(),
-				text: '当前没有正在提交的作业。'
-			})
 		}
 		return
 	}
@@ -652,6 +647,10 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 			})
 		} else if (activityId == 'ec') {
 			await exit_submit(from.id, env, 'callback')
+			await api(env, 'answerCallbackQuery', {
+				callback_query_id: callback_query.id,
+				text: '已取消提交'
+			})
 		} else {
 			// 用户点击作业
 			const id = from.id
