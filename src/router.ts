@@ -28,7 +28,7 @@ async function safeFetch(input: RequestInfo<unknown, CfProperties<unknown>>, ini
 			console.debug("Using api:", input)
 			const res = await fetch(input, init)
 			if (res.status != 200) {
-				throw new Error("status: " + res.status + " " + res.statusText)
+				throw new Error(await res.text())
 			}
 			console.debug("Api response:", input)
 			resolve(res)
@@ -40,16 +40,22 @@ async function safeFetch(input: RequestInfo<unknown, CfProperties<unknown>>, ini
 async function fetchAPI(type: 'race' | 'fallback', env: Env, path: string, options?: RequestInit) {
 	if (type === 'race') {
 		const jobs = env.API_FETCH.map(x => safeFetch(x + path, options))
-		return await Promise.any(jobs)
+		return await Promise.any(jobs).catch(e => {
+			if (e instanceof AggregateError) {
+				throw e.errors[0]
+			}
+		}) as Response
 	}
+	let error = null
 	for (const url of env.API_FETCH) {
 		try {
 			return await safeFetch(url + path, options)
 		} catch (e) {
 			console.error(url, e)
+			error = e
 		}
 	}
-	throw  new Error("All fetch failed")
+	throw error || new Error('No API_FETCH')
 }
 
 async function sendMessage(env: Env, chat_id: number, text: string, parse_mode = 'HTML', reply_to?: number) {
@@ -131,7 +137,7 @@ async function onCommand(message: string, id: number, env: Env) {
 			await editMessage(env, id, res.result.message_id, "登录成功, 推送已开启。使用 /list 查看未完成的作业。")
 		} catch (e: any) {
 			console.log(e)
-			if (res) await editMessage(env, id, res.result.message_id, "登录失败: \n" + e.toString())
+			if (res) await editMessage(env, id, res.result.message_id, "登录失败: \n" + (e.message || e.toString()))
 		}
 	} else if (message.startsWith('/list')) {
 		const res: { result: { message_id: number } } = await sendMessage(env, id, "请稍等...") as any
