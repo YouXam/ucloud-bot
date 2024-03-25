@@ -30,7 +30,9 @@ async function safeFetch(input: RequestInfo<unknown, CfProperties<unknown>>, ini
 			if (res.status != 200) {
 				throw new Error(await res.text())
 			}
-			console.debug("Api response:", input)
+			const cloned = res.clone()
+			const resBody = await cloned.text()
+			console.debug("Api response:", input, resBody)
 			resolve(res)
 		} catch (e) {
 			reject(e)
@@ -167,10 +169,24 @@ async function onCommand(message: string, id: number, env: Env) {
 			}
 			const classes: { [classId: string]: UndoneListItem[] } = {}
 			undoneList.forEach(item => {
-				if (!classes[item.courseInfo.id]) {
-					classes[item.courseInfo.id] = []
+				if (item?.courseInfo?.id) {
+					classes[item.courseInfo.id] = [
+						...(classes[item.courseInfo.id] || []),
+						item
+					]
+				} else {
+					classes['0'] = [
+						...(classes['0'] || []),
+						{
+							...item,
+							courseInfo: {
+								id: 0,
+								name: '未知课程',
+								teachers: '未知教师'
+							}
+						}
+					]
 				}
-				classes[item.courseInfo.id].push(item)
 			})
 			const reply_markup: Array<Array<{ text: string, callback_data?: string }>> = [];
 			for (const classId in classes) {
