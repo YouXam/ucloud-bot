@@ -280,7 +280,12 @@ function filterAndExtractImages(html: string) {
 		images
 	};
 }
-export async function sendTask(env: Env, id: number, detail: Detail) {
+const alertTip = {
+	'new': '',
+	"hour": '<b>⚠️ 剩余时间不足一小时 ⚠️</b>\n\n',
+	"day": '<b>⚠️ 剩余时间不足一天 ⚠️</b>\n\n' 
+}
+export async function sendTask(env: Env, id: number, detail: Detail, alertType: 'new' | 'hour' | 'day'='new') {
 	let { assignmentTitle, assignmentContent, chapterName, courseInfo, assignmentBeginTime, assignmentEndTime } = detail
 	const { html: content, images } = filterAndExtractImages(assignmentContent)
 	if (images.length) {
@@ -294,7 +299,7 @@ export async function sendTask(env: Env, id: number, detail: Detail) {
 	}
 	let couseName = courseInfo && courseInfo.name && courseInfo.teachers ? "#" + courseInfo.name + "(" + courseInfo?.teachers + ")" : ''
 
-	const text = `<b>${assignmentTitle}</b>\n<b>课程: </b>${couseName}\n<b>章节</b>: ${chapterName || '-'}\n<b>开始时间</b>: ${assignmentBeginTime}\n<b>结束时间</b>: ${assignmentEndTime}\n\n${content}`
+	const text = `${alertTip[alertType]}<b>${assignmentTitle}</b>\n<b>课程: </b>${couseName}\n<b>章节</b>: ${chapterName || '-'}\n<b>开始时间</b>: ${assignmentBeginTime}\n<b>结束时间</b>: ${assignmentEndTime}\n\n${content}`
 	let reply_markup: {
 		text: string;
 		url?: string;
@@ -347,8 +352,7 @@ export async function sendTask(env: Env, id: number, detail: Detail) {
 		})
 	})
 }
-
-export async function sendUndoneItem(env: Env, id: number, item: Pick<UndoneListItem, 'activityName' | 'courseInfo' | 'endTime' | 'type' | 'activityId'>) {
+export async function sendUndoneItem(env: Env, id: number, item: Pick<UndoneListItem, 'activityName' | 'courseInfo' | 'endTime' | 'type' | 'activityId'>, alertType: 'new' | 'hour' | 'day'='new') {
 	const { activityName, courseInfo, endTime } = item
 	const couseName = courseInfo && courseInfo.name && courseInfo.teachers ? "#" + courseInfo.name + "(" + courseInfo?.teachers + ")" : ''
 	const typename = {
@@ -356,7 +360,7 @@ export async function sendUndoneItem(env: Env, id: number, item: Pick<UndoneList
 		3: '作业',
 		4: '测验'
 	}[item.type] || '未知'
-	const text = `<b>${activityName}</b>\n<b>课程: </b>${couseName}\n<b>结束时间</b>: ${endTime}\n\n<b>此任务为 ${typename}，请在云邮教学空间网页端提交。</b>`
+	const text = `${alertTip[alertType]}<b>${activityName}</b>\n<b>课程: </b>${couseName}\n<b>结束时间</b>: ${endTime}\n\n<b>此任务为 ${typename}，请在云邮教学空间网页端提交。</b>`
 	return await api(env, 'sendMessage', {
 		chat_id: id.toString(),
 		text,

@@ -12,6 +12,7 @@ export default {
 		if (!users.success || !users.results || users.results.length == 0)
 			return;
 		const cache: { [key: string] : Detail } = {}
+		const now = new Date().getTime();
 		for (const user of users.results) {
 			try {
 				const r = await fetch(env.API_SCHEDULE + "/undoneList", {
@@ -26,42 +27,66 @@ export default {
 				const res: UndoneList = await r.json()
 				if (res.undoneNum == 0)
 					continue;
-				const lastUndoneList: { [key: string]: boolean } = JSON.parse(user.undoneList);
-				const newTask = res.undoneList.filter(item => !lastUndoneList[item.activityId]);
-				if (newTask.length != 0) {
-					for (const item of newTask) {
-						try {
-							if (cache[item.activityId]) {
-								await sendTask(env, user.id, cache[item.activityId]);
-								continue;
-							}
-							if (item.type !== 3) {
-								await sendUndoneItem(env, user.id, item);
-								continue;
-							}
-							const res = await fetch(env.API_SCHEDULE + "/homework?id=" + item.activityId, {
-								headers: {
-									"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
-								}
-							})
-							if (res.status != 200) {
-								console.error(user.username, res.status, res.statusText, await res.text());
-							} else {
-								const data: Detail = await res.json();
-								cache[item.activityId] = data;
-								await sendTask(env, user.id, data);
-							}
-						} catch (e) {
-							console.error(user.username, e);
-						}
+				const undoneList: { [key: string]: 'new' | 'day' | 'hour' } = {}
+				// 'new': 已经推送过新作业的, 'day': 已经推送过“剩余时间不足一天”的，'hour': 已经推送过“剩余时间不足一小时”的
+				let lastUndoneList: { [key: string]: 'new' | 'day' | 'hour' } = JSON.parse(user.undoneList)
+				
+				// migrate
+				for (const key in lastUndoneList) {
+					// @ts-expect-error
+					if (lastUndoneList[key] === true) {
+						lastUndoneList[key] = 'new';
 					}
-					await env.DB.prepare(`INSERT INTO users (id, username, password, push, undoneList) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET username = excluded.username, password = excluded.password, push = excluded.push, undoneList = excluded.undoneList`)
-						.bind(user.id, user.username, user.password, user.push, JSON.stringify(res.undoneList.reduce((obj, item) => {
-							obj[item.activityId] = true;
-							return obj;
-						}, {} as { [key: string]: boolean })))
-						.run()
 				}
+
+				for (const item of res.undoneList) {
+					try {
+						let alertType: 'new' | 'day' | 'hour'
+						const endTime = new Date(item.endTime + " GMT+0800").getTime();
+						if (endTime - now < 60 * 60 * 1000) {
+							alertType = 'hour';
+						} else if (endTime - now < 24 * 60 * 60 * 1000) {
+							alertType = 'day';
+						} else {
+							alertType = 'new'
+						}
+						if (lastUndoneList[item.activityId] === alertType) {
+							undoneList[item.activityId] = alertType;
+							continue;
+						}
+						if (cache[item.activityId]) {
+							console.log("send", user.id, cache[item.activityId], alertType);
+							await sendTask(env, user.id, cache[item.activityId], alertType);
+							undoneList[item.activityId] = alertType;
+							continue;
+						}
+						if (item.type !== 3) {
+							console.log("send", user.id, item, alertType);
+							await sendUndoneItem(env, user.id, item, alertType);
+							undoneList[item.activityId] = alertType;
+							continue;
+						}
+						const res = await fetch(env.API_SCHEDULE + "/homework?id=" + item.activityId, {
+							headers: {
+								"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
+							}
+						})
+						if (res.status != 200) {
+							console.error(user.username, res.status, res.statusText, await res.text());
+						} else {
+							const data: Detail = await res.json();
+							cache[item.activityId] = data;
+							console.log("send", user.id, data, alertType);
+							await sendTask(env, user.id, data, alertType);
+							undoneList[item.activityId] = alertType;
+						}
+					} catch (e) {
+						console.error(user.username, e);
+					}
+				}
+				await env.DB.prepare(`INSERT INTO users (id, username, password, push, undoneList) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET username = excluded.username, password = excluded.password, push = excluded.push, undoneList = excluded.undoneList`)
+					.bind(user.id, user.username, user.password, user.push, JSON.stringify(undoneList))
+					.run()
 			} catch (e) {
 				console.error(user.username, e);
 			}
