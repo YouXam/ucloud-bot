@@ -313,15 +313,24 @@ export async function sendTask(env: Env, id: number, detail: Detail) {
 			}
 			return x.url
 		}
-		reply_markup = reply_markup.concat(detail.resource.map((x: ResourceDetail) => ([{
-				text: x.name,
-				url: getPreviewURL(x)
-			},
-			{
-				text: '下载',
-				url: x.url
+		function getReplyMarkup(x: ResourceDetail) {
+			if (x.ext == 'doc' || x.ext == 'docx' || x.ext == 'ppt' || x.ext == 'pptx' || x.ext == 'xls' || x.ext == 'xlsx') {
+				return [{
+						text: x.name,
+						url: getPreviewURL(x)
+					},
+					{
+						text: '下载',
+						url: x.url
+					}
+				]
 			}
-		])))
+			return [{
+				text: x.name,
+				url: x.url
+			}]
+		}
+		reply_markup = reply_markup.concat(detail.resource.map(getReplyMarkup))
 	}
 	reply_markup = reply_markup.concat([[
 		{
