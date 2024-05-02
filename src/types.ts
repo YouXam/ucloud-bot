@@ -101,6 +101,7 @@ export interface Attachment {
     filename: string;
     mime_type: string;
     uploading?: boolean;
+    file_id?: string
 }
 
 

@@ -1,5 +1,5 @@
 import { Router } from 'itty-router';
-import { UndoneList, UndoneListItem, ResourceDetail, Detail, User, Submitting, SubmittingD1, CourseInfo } from './types';
+import { UndoneList, UndoneListItem, ResourceDetail, Detail, User, Submitting, SubmittingD1, CourseInfo, Attachment } from './types';
 import { Parser } from 'htmlparser2';
 
 function apiUrl(env: Env, methodName: string, params?: { [key: string]: any }) {
@@ -366,19 +366,42 @@ export async function sendUndoneItem(env: Env, id: number, item: Pick<UndoneList
 async function updateSubmitting(env: Env, submitting: Submitting): Promise<string> {
 	const { id, username, assignment_id, content, attachments, message_id, detail, reply_to, channel_id } = submitting
 	let text = submitting.is_submitting ? 
-		`正在提交 <b>${detail.assignmentTitle}</b>，请直接发送文件或文字，发送完毕后点击“提交”按钮以提交。注意发送图片时要以文件格式发送。\n\n`
+		`正在提交 <b>${detail.assignmentTitle}</b>，请直接发送文字、文件或图片，发送完毕后点击“提交”按钮以提交。\n\n`
 		: `已提交 <b>${detail.assignmentTitle}</b>：\n\n`
 	if (content) {
 		text += `<b>内容</b>：\n${content}\n\n`
 	}
 	if (attachments.length) {
-		text += `<b>附件</b>：\n${attachments.map(x => {
+		text += `<b>附件</b>：\n${attachments.map((x, i)=> {
 			if (x.uploading) {
-				return x.filename + ' (上传中...)'
+				return (i + 1) + ". " + x.filename + ' (上传中...)'
 			} else {
-				return '<a href="' + x.url + '">' + x.filename + '</a>'
+				return (i + 1) + '. <a href="' + x.url + '">' + x.filename + '</a>'
 			}
 		}).join('\n')}\n\n`
+	}
+	const rmfile_reply_markup = []
+	if (attachments.length) {
+		let line = []
+		for (let i = 0; i < attachments.length; i++) {
+			line.push({
+				text: "❌ " + (i + 1).toString(),
+				callback_data: 'rmfile.' + i
+			})
+			if (line.length == 5) {
+				rmfile_reply_markup.push(line)
+				line = []
+			}
+		}
+		if (line.length) {
+			rmfile_reply_markup.push(line)
+		}
+		if (rmfile_reply_markup.length !== 1 || rmfile_reply_markup[0].length !== 1) {
+			rmfile_reply_markup.push([{
+				text: '❌ 全部删除',
+				callback_data: 'rmfile'
+			}])
+		}
 	}
 	const res: any = await api(env, message_id ? 'editMessageText' : 'sendMessage', {
 		chat_id: channel_id,
@@ -388,6 +411,7 @@ async function updateSubmitting(env: Env, submitting: Submitting): Promise<strin
 		reply_to_message_id: reply_to,
 		reply_markup: submitting.is_submitting ? JSON.stringify({
 			inline_keyboard: [
+				...rmfile_reply_markup,
 				[
 					{
 						text: '取消',
@@ -401,7 +425,8 @@ async function updateSubmitting(env: Env, submitting: Submitting): Promise<strin
 			]
 		}) : { inline_keyboard: [] },
 		link_preview_options: {
-			prefer_small_media: true
+			prefer_small_media: true,
+			show_above_text: true
 		}
 	})
 	if (!res || !res.ok) {
@@ -421,7 +446,7 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 	console.log(data)
 	if (data.message) {
 		const { message } = data
-		if (!message.text && !message.caption && !message.document) {
+		if (!message.text && !message.caption && !message.document && !message.photo) {
 			return new Response('Ok')
 		}
 		if (message.text && message.text.startsWith('/')) {
@@ -451,19 +476,36 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				preSubmitting.content, user.username
 			).run()
 			await updateSubmitting(env, preSubmitting)
-		} else if (message.document) {
-			const { file_name: filename, mime_type, file_id } = message.document
-			const position = preSubmitting.attachments.length
-			preSubmitting.attachments.push({
-				resourceId: '',
-				url: '',
-				filename,
-				mime_type,
-				uploading: true
-			})
-			await env.DB.prepare('UPDATE submitting SET attachments = ? WHERE username = ?').bind(
-				JSON.stringify(preSubmitting.attachments), user.username
-			).run()
+		}
+		if (message.document || message.photo) {
+			let temp_filename = null
+			const { file_name: filename, mime_type, file_id } = message.document ? message.document : {
+				file_name: (temp_filename = message.photo[message.photo.length - 1].file_unique_id + 'temp.jpg'),
+				mime_type: 'image/jpeg',
+				file_id: message.photo[message.photo.length - 1].file_id
+			}
+			let position = preSubmitting.attachments.findIndex(x => x.file_id == file_id)
+			if (position === -1) {
+				position = preSubmitting.attachments.length
+				preSubmitting.attachments.push({
+					resourceId: '',
+					url: '',
+					filename,
+					mime_type,
+					file_id,
+					uploading: true
+				})
+			}
+			if (message.caption) {
+				preSubmitting.content = preSubmitting.content.length ? preSubmitting.content + '\n' + message.caption : message.caption
+				await env.DB.prepare('UPDATE submitting SET content = ?, attachments = ? WHERE username = ?').bind(
+					preSubmitting.content, JSON.stringify(preSubmitting.attachments), user.username
+				).run()
+			} else {
+				await env.DB.prepare('UPDATE submitting SET attachments = ? WHERE username = ?').bind(
+					JSON.stringify(preSubmitting.attachments), user.username
+				).run()
+			}
 			await updateSubmitting(env, preSubmitting)
 			const r: any = await api(env, 'getFile', { file_id })
 			if (!r.ok) {
@@ -482,7 +524,7 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 			const newAttachments = {
 				resourceId: attachment.resourceId,
 				url: attachment.previewUrl,
-				filename,
+				filename: temp_filename ? r.result.file_path.split('/').join("_") : filename,
 				mime_type
 			}
 			const preSubmitting2D1: SubmittingD1 | null = await env.DB.prepare(`SELECT * FROM submitting WHERE username = ?`)
@@ -725,6 +767,43 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				}))
 			}
 			
+		} else if (callback_data.startsWith('rmfile')) {
+			// 用户删除附件
+			const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(from.id).first()
+			if (!user) {
+				ctx.waitUntil(api(env, 'answerCallbackQuery', {
+					callback_query_id: callback_query.id,
+					show_alert: 'true',
+					text: '未登录。使用 `/login username password` 登录。'
+				}))
+				return new Response('Ok')
+			}
+			const submitting: SubmittingD1 | null = await env.DB.prepare(`SELECT * FROM submitting WHERE username = ?`).bind(user.username).first()
+			if (!submitting || !submitting.is_submitting) {
+				ctx.waitUntil(api(env, 'answerCallbackQuery', {
+					callback_query_id: callback_query.id,
+					show_alert: 'true',
+					text: '当前没有正在提交的作业。'
+				}))
+				return new Response('Ok')
+			}
+			let preAttachments = JSON.parse(submitting.attachments)
+			if (callback_data === 'rmfile') {
+				preAttachments = []
+			} else {
+				const index = parseInt(callback_data.split('.')[1])
+				preAttachments.splice(index, 1)
+			}
+			await env.DB.prepare(`UPDATE submitting SET attachments = ? WHERE username = ?`).bind(
+				JSON.stringify(preAttachments), user.username
+			).run()
+			await updateSubmitting(env, {
+				...submitting,
+				attachments: preAttachments,
+				reply_markup: JSON.parse(submitting.reply_markup),
+				detail: JSON.parse(submitting.detail)
+			})
+			ctx.waitUntil(api(env, 'answerCallbackQuery', { callback_query_id: callback_query.id }))
 		} else {
 			// 用户点击作业
 			const id = from.id
