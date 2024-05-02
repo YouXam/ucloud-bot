@@ -1,5 +1,5 @@
 import { Router } from 'itty-router';
-import { UndoneList, UndoneListItem, ResourceDetail, Detail, User, Submitting, SubmittingD1 } from './types';
+import { UndoneList, UndoneListItem, ResourceDetail, Detail, User, Submitting, SubmittingD1, CourseInfo } from './types';
 import { Parser } from 'htmlparser2';
 
 function apiUrl(env: Env, methodName: string, params?: { [key: string]: any }) {
@@ -204,7 +204,7 @@ async function onCommand(message: string, id: number, env: Env) {
 				classItem.forEach(item => {
 					reply_markup.push([{
 						text: `📚 ${item.activityName}`,
-						callback_data: item.activityId
+						callback_data: item.type === 3 ? item.activityId : "us." + item.type + "." + item.activityId
 					}])
 				})
 			}
@@ -339,6 +339,21 @@ export async function sendTask(env: Env, id: number, detail: Detail) {
 	})
 }
 
+export async function sendUndoneItem(env: Env, id: number, item: Pick<UndoneListItem, 'activityName' | 'courseInfo' | 'endTime' | 'type' | 'activityId'>) {
+	const { activityName, courseInfo, endTime } = item
+	const couseName = courseInfo && courseInfo.name && courseInfo.teachers ? "#" + courseInfo.name + "(" + courseInfo?.teachers + ")" : ''
+	const typename = {
+		2: '问卷',
+		3: '作业',
+		4: '测验'
+	}[item.type] || '未知'
+	const text = `<b>${activityName}</b>\n<b>课程: </b>${couseName}\n<b>结束时间</b>: ${endTime}\n\n<b>此任务为 ${typename}，请在云邮教学空间网页端提交。</b>`
+	return await api(env, 'sendMessage', {
+		chat_id: id.toString(),
+		text,
+		parse_mode: 'HTML'
+	})
+}
 async function updateSubmitting(env: Env, submitting: Submitting): Promise<string> {
 	const { id, username, assignment_id, content, attachments, message_id, detail, reply_to, channel_id } = submitting
 	let text = submitting.is_submitting ? 
@@ -484,8 +499,8 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 		}
 	} else if (data.callback_query) {
 		const { callback_query } = data
-		const { data: activityId, from } = callback_query
-		if (activityId == '0') {
+		const { data: callback_data, from } = callback_query
+		if (callback_data == '0') {
 			// 用户点击教师或课程
 			ctx.waitUntil(api(env, 'answerCallbackQuery', {
 				callback_query_id: callback_query.id,
@@ -493,16 +508,16 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				text: '暂不支持查看教师或课程详情'
 			}))
 			return new Response('Ok')
-		} else if (activityId == '-1') {
+		} else if (callback_data == '-1') {
 			// 提交状态点击“提交中”
 			ctx.waitUntil(api(env, 'answerCallbackQuery', {
 				callback_query_id: callback_query.id,
 				text: '当前作业正在提交。'
 			}))
 			return new Response('Ok') 
-		} else if (activityId.startsWith('s')) {
+		} else if (callback_data.startsWith('s')) {
 			// 进入提交状态
-			const submittingId = activityId.substr(1)
+			const submittingId = callback_data.substr(1)
 			const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(from.id).first()
 			if (!user) {
 				ctx.waitUntil(api(env, 'answerCallbackQuery', {
@@ -588,7 +603,7 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				JSON.stringify(submitting.reply_markup)
 			).run()
 			ctx.waitUntil(api(env, 'answerCallbackQuery', { callback_query_id: callback_query.id }))
-		} else if (activityId == 'es') {
+		} else if (callback_data == 'es') {
 			// 提交作业
 			const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(from.id).first()
 			if (!user) {
@@ -667,12 +682,40 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				callback_query_id: callback_query.id,
 				text: '提交成功'
 			})
-		} else if (activityId == 'ec') {
+		} else if (callback_data == 'ec') {
 			await exit_submit(from.id, env, 'callback')
 			await api(env, 'answerCallbackQuery', {
 				callback_query_id: callback_query.id,
 				text: '已取消提交'
 			})
+		} else if (callback_data.startsWith('us')) {
+			// 用户点击未支持的作业
+			// 2: 问卷，4: 测验
+			const [_, type, activityId] = callback_data.split('.') as [string, string, string]
+			try {
+				const res = await fetchAPI('fallback', env, "/cache?id=" + activityId)
+				const info: {
+					info: CourseInfo & {
+						endTime: string,
+						activityName: string
+					}
+				} = await res.json()
+				await sendUndoneItem(env, from.id, {
+					type: parseInt(type),
+					courseInfo: info.info,
+					endTime: info.info.endTime,
+					activityId,
+					activityName: info.info.activityName
+				})
+				ctx.waitUntil(api(env, 'answerCallbackQuery', { callback_query_id: callback_query.id }))
+			} catch (e) {
+				ctx.waitUntil(api(env, 'answerCallbackQuery', {
+					callback_query_id: callback_query.id,
+					show_alert: 'true',
+					text: '获取作业详情失败: \n' + ((e as Error).message || (e as any).toString())
+				}))
+			}
+			
 		} else {
 			// 用户点击作业
 			const id = from.id
@@ -685,7 +728,7 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 				}))
 				return new Response('Ok')
 			}
-			const res = await fetchAPI('race', env, "/homework?id=" + activityId, {
+			const res = await fetchAPI('race', env, "/homework?id=" + callback_data, {
 				headers: {
 					"Authorization": `Basic ${btoa(`${user.username}:${user.password}`)}`
 				}

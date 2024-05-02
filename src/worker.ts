@@ -1,5 +1,5 @@
 
-import apiRouter, { sendTask } from './router';
+import apiRouter, { sendTask, sendUndoneItem } from './router';
 import { UndoneList, User, Detail  } from './types';
 
 export default {
@@ -33,6 +33,10 @@ export default {
 						try {
 							if (cache[item.activityId]) {
 								await sendTask(env, user.id, cache[item.activityId]);
+								continue;
+							}
+							if (item.type !== 3) {
+								await sendUndoneItem(env, user.id, item);
 								continue;
 							}
 							const res = await fetch(env.API_SCHEDULE + "/homework?id=" + item.activityId, {

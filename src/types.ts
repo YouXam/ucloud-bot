@@ -17,6 +17,7 @@ export interface UndoneListItem {
     siteName: string;
     activityName: string;
     activityId: string;
+    // 2: 问卷，3: 作业，4: 测验
     type: number;
     endTime: string;
     assignmentType: number;
