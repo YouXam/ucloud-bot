@@ -62,3 +62,11 @@
     ```
     则说明设置成功。
 9. 在 Telegram 中访问你的机器人，使用方式见上面“直接使用”部分。
+
+## 其他
+
+使用 [YouXam/ucloud](https://github.com/YouXam/ucloud) 与教学云平台进行交互。
+
+## License
+
+[GPL-3.0](LICENSE)
