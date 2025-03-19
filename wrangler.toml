@@ -6,13 +6,12 @@ compatibility_date = "2023-10-31"
 [[d1_databases]]
 binding = "DB"
 database_name = "ucloud-bot"
-database_id = "xxxxxx"
+database_id = "2dc2a7e6-ece2-4a4b-9e01-5928f8d4bb4d"
 
 [vars]
-ENV_BOT_TOKEN = "xxx"
-ENV_BOT_SECRET = 'xxx'
-API_SCHEDULE = "xxx"
-API_FETCH = "xxx"
+API_SCHEDULE = "https://ucloud.youxam.one"
+API_FETCH = ["https://ucloud.youxam.one"]
+
 
 [triggers]
 # every 30 minutes

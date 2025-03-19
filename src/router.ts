@@ -216,7 +216,12 @@ async function onCommand(message: string, id: number, env: Env) {
 			})
 		} catch (e: any) {
 			console.error(e.stack || e.message || e.toString())
-			return await editMessage(env, id, res.result.message_id, "获取失败: \n" + e.toString())
+			return await editMessage(
+				env,
+				id,
+				res.result.message_id,
+				"获取失败: \n" + e.toString() + "\n请尝试使用 /login 重新登录以解决次问题。如果问题仍然存在，请联系开发者 @founight。"
+			)
 		}
 	} else if (message.startsWith('/push')) {
 		const user: User | null = await env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first()
@@ -444,7 +449,7 @@ const router = Router();
 
 router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 	if (request.headers.get('X-Telegram-Bot-Api-Secret-Token') != env.ENV_BOT_SECRET) {
-		return new Response('Not Found.', { status: 404 });
+		return new Response('Forbidden', { status: 403 })
 	}
 	const data = await request.json()
 	console.log(data)
@@ -845,10 +850,13 @@ router.post('/webhook', async (request, env: Env, ctx: ExecutionContext) => {
 router.get('/setWebhook', async (request, env: Env) => {
 	const url = new URL(request.url)
 	const proto = request.headers.get('X-Forwarded-Proto') ? request.headers.get('X-Forwarded-Proto') + ":" : url.protocol
+	if (!proto.startsWith('https')) {
+		return new Response('Webhook must be set to https.', { status: 400 })
+	}
 	const host = request.headers.get('host') || url.hostname
-	const webhookUrl = `${proto}//${host}/webhook`
+	const webhookUrl = `https://${host}/webhook`
 	const jobs = [
-		api(env, 'setMyDescription', { description: '查看/推送「云邮教学空间」作业' }),
+		api(env, 'setMyDescription', { description: '查看/推送/提交「云邮教学空间」作业。https://github.com/youxam/ucloud-bot' }),
 		api(env, 'setMyCommands', { commands: [
 			{ command: 'start', description: '开始' },
 			{ command: 'login', description: '登录' },
@@ -856,7 +864,7 @@ router.get('/setWebhook', async (request, env: Env) => {
 			{ command: 'push', description: '开启/关闭推送' },
 			{ command: 'exit_submit', description: '取消提交' },
 		] }),
-		api(env, 'setMyShortDescription', { short_description: '查看/推送「云邮教学空间」作业' }),
+		api(env, 'setMyShortDescription', { short_description: '查看/推送/提交「云邮教学空间」作业。https://github.com/youxam/ucloud-bot' }),
 		(await fetch(apiUrl(env, 'setWebhook', { url: webhookUrl, secret_token: env.ENV_BOT_SECRET }))).json()
 	]
 	const results = await Promise.allSettled(jobs)
