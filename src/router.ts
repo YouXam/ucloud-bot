@@ -60,7 +60,7 @@ async function fetchAPI(type: 'race' | 'fallback', env: Env, path: string, optio
 	throw error || new Error('No API_FETCH')
 }
 
-async function sendMessage(env: Env, chat_id: number, text: string, parse_mode = 'HTML', reply_to?: number) {
+export async function sendMessage(env: Env, chat_id: number, text: string, parse_mode = 'HTML', reply_to?: number) {
 	try {
 		return await api(env, 'sendMessage', {
 			chat_id: chat_id,

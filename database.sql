@@ -9,7 +9,7 @@ CREATE TABLE users (
     undoneList TEXT
 );
 
-CREATE TABLE submitting (
+CREATE TABLE submitting ( 
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username VARCHAR(255) UNIQUE,
     is_submitting BOOLEAN,
