@@ -16,3 +16,6 @@ API_FETCH = ["https://ucloud.youxam.one"]
 [triggers]
 # every 30 minutes
 crons = ["*/30 * * * *"]
+
+[observability]
+enabled = false
