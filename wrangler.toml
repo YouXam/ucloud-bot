@@ -9,8 +9,8 @@ database_name = "ucloud-bot"
 database_id = "2dc2a7e6-ece2-4a4b-9e01-5928f8d4bb4d"
 
 [vars]
-API_SCHEDULE = "https://ucloud.youxam.one"
-API_FETCH = ["https://ucloud.youxam.one"]
+API_SCHEDULE = "https://ucloud.youxam.com"
+API_FETCH = ["https://ucloud.youxam.com"]
 
 
 [triggers]
