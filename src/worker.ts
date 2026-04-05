@@ -58,7 +58,7 @@ export default {
                         } else if (remainingTime < 24 * 60 * 60 * 1000) {
                             alertType = 'day';
                         } else {
-                            alertType = 'new'
+                            alertType = 'new';
                         }
                         if (lastUndoneList[item.activityId] === alertType) {
                             undoneList[item.activityId] = alertType;
