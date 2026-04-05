@@ -50,9 +50,12 @@ export default {
                     try {
                         let alertType: 'new' | 'day' | 'hour'
                         const endTime = new Date(item.endTime + " GMT+0800").getTime();
-                        if (endTime - now < 60 * 60 * 1000) {
+                        const remainingTime = endTime - now;
+                        if (remainingTime <= 0) {
+                            continue;
+                        } else if (remainingTime < 60 * 60 * 1000) {
                             alertType = 'hour';
-                        } else if (endTime - now < 24 * 60 * 60 * 1000) {
+                        } else if (remainingTime < 24 * 60 * 60 * 1000) {
                             alertType = 'day';
                         } else {
                             alertType = 'new'
