@@ -63,6 +63,10 @@
     则说明设置成功。
 9. 在 Telegram 中访问你的机器人，使用方式见上面“直接使用”部分。
 
+### 常见问题
+
+如果机器人返回 `error code 520`，请查阅 https://github.com/YouXam/ucloud-bot/issues/1
+
 ## 其他
 
 使用 [YouXam/ucloud](https://github.com/YouXam/ucloud) 与教学云平台进行交互。
